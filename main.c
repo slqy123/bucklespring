@@ -18,6 +18,7 @@
 #include <AL/al.h>
 #include <AL/alc.h>
 #include <AL/alure.h>
+#include <AL/alext.h>
 #endif
 
 #include "buckle.h"
@@ -154,7 +155,8 @@ int main(int argc, char **argv)
 
 	ALCdevice *device = NULL;
 	ALCcontext *context = NULL;
-	ALfloat listenerOri[] = { 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f };
+	/* Listener orientation: looking forward (0, 0, -1), up vector (0, 1, 0) */
+	ALfloat listenerOri[] = { 0.0f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f };
 	ALCenum error;
 
 	if (!opt_device) {
@@ -170,13 +172,29 @@ int main(int argc, char **argv)
 		goto out;
 	}
 
-	context = alcCreateContext(device, NULL);
+	/* Enable HRTF for better 3D audio positioning */
+	ALCint hrtf_attrs[] = {
+		ALC_HRTF_SOFT, ALC_TRUE,
+		0
+	};
+
+	context = alcCreateContext(device, hrtf_attrs);
 	if (!alcMakeContextCurrent(context)) {
 		fprintf(stderr, "failed to make default context\n");
 		return -1;
 	}
 	TEST_ERROR("make default context");
 
+	/* Check if HRTF is enabled */
+	ALCint hrtf_state;
+	alcGetIntegerv(device, ALC_HRTF_SOFT, 1, &hrtf_state);
+	if (hrtf_state) {
+		printd("HRTF enabled successfully");
+	} else {
+		printd("HRTF not available, using standard stereo");
+	}
+
+	/* Set listener at origin, looking forward along negative Z axis */
 	alListener3f(AL_POSITION, 0, 0, 0);
 	alListener3f(AL_VELOCITY, 0, 0, 0);
 	alListenerfv(AL_ORIENTATION, listenerOri);
@@ -363,7 +381,10 @@ int play(int code, int press)
 
 		double x = find_key_loc(code);
 		if (opt_stereo_width > 0) {
-			alSource3f(src[idx], AL_POSITION, -x, 0, (100 - opt_stereo_width) / 100.0);
+			ALfloat pos_x = x * (opt_stereo_width / 100.0);
+			ALfloat pos_y = -0.3f;  /* Below the listener */
+			ALfloat pos_z = -0.3f - (opt_stereo_width / 100.0);  /* In front of listener */
+			alSource3f(src[idx], AL_POSITION, pos_x, pos_y, pos_z);
 		}
 		alSourcef(src[idx], AL_GAIN, opt_gain / 100.0);
 
